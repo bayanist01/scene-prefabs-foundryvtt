@@ -2,6 +2,121 @@ Hooks.once("init", () => {
   console.log("Scene Prefabs | Initialized (v0.1.0)");
 });
 
+// Автовыделение всего префаба при контроле одного объекта
+function scenePrefabsHandleControl(object, controlled) {
+  if (!controlled) return;
+  if (!object?.document) return;
+
+  const flags = object.document.flags?.["scene-prefabs"];
+  const prefabInstanceId = flags?.prefabInstanceId;
+  if (!prefabInstanceId) return;
+
+  const layer = object.layer;
+  if (!layer?.placeables) return;
+
+  for (const other of layer.placeables) {
+    if (other === object) continue;
+    const otherFlags = other.document?.flags?.["scene-prefabs"];
+    if (otherFlags?.prefabInstanceId !== prefabInstanceId) continue;
+
+    // Выделяем остальные элементы префаба, не снимая другие выделения
+    other.control({ releaseOthers: false });
+  }
+}
+
+// Generic control hooks по типам placeables
+Hooks.on("controlToken", scenePrefabsHandleControl);
+Hooks.on("controlTile", scenePrefabsHandleControl);
+Hooks.on("controlDrawing", scenePrefabsHandleControl);
+Hooks.on("controlAmbientLight", scenePrefabsHandleControl);
+Hooks.on("controlAmbientSound", scenePrefabsHandleControl);
+Hooks.on("controlNote", scenePrefabsHandleControl);
+Hooks.on("controlMeasuredTemplate", scenePrefabsHandleControl);
+
+// Синхронное движение всего префаба по дельте одного объекта (межслойно)
+function scenePrefabsPreUpdate(doc, change, options, userId) {
+  // Не зацикливаем собственные апдейты
+  if (options?.["scene-prefabs-sync"]) return;
+
+  const scene = doc.parent;
+  if (!scene?.updateEmbeddedDocuments) return;
+
+  const flags = doc.flags?.["scene-prefabs"];
+  const prefabInstanceId = flags?.prefabInstanceId;
+  if (!prefabInstanceId) return;
+
+  let dx = 0;
+  let dy = 0;
+
+  if (typeof change.x === "number" || typeof change.y === "number") {
+    const newX = typeof change.x === "number" ? change.x : doc.x;
+    const newY = typeof change.y === "number" ? change.y : doc.y;
+    dx = newX - doc.x;
+    dy = newY - doc.y;
+  } else if (Array.isArray(change.c) && Array.isArray(doc.c)) {
+    const [nx0, ny0] = change.c;
+    const [ox0, oy0] = doc.c;
+    dx = nx0 - ox0;
+    dy = ny0 - oy0;
+  }
+
+  if (!dx && !dy) return;
+
+  // Все коллекции, которые хотим двигать вместе
+  const collections = {
+    Token: scene.tokens,
+    Tile: scene.tiles,
+    Drawing: scene.drawings,
+    AmbientLight: scene.lights,
+    AmbientSound: scene.sounds,
+    Note: scene.notes,
+    MeasuredTemplate: scene.templates,
+    Wall: scene.walls
+  };
+
+  /** @type<Record<string, any[]>> */
+  const updatesByType = {};
+
+  for (const [type, coll] of Object.entries(collections)) {
+    const docs = coll?.contents ?? [];
+    for (const d of docs) {
+      if (d.id === doc.id) continue;
+      const f = d.flags?.["scene-prefabs"];
+      if (!f || f.prefabInstanceId !== prefabInstanceId) continue;
+
+      const update = { _id: d.id };
+
+      if (type === "Wall" && Array.isArray(d.c)) {
+        const [x0, y0, x1, y1] = d.c;
+        update.c = [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
+      } else if (typeof d.x === "number" && typeof d.y === "number") {
+        update.x = d.x + dx;
+        update.y = d.y + dy;
+      } else {
+        continue;
+      }
+
+      if (!updatesByType[type]) updatesByType[type] = [];
+      updatesByType[type].push(update);
+    }
+  }
+
+  for (const [type, updates] of Object.entries(updatesByType)) {
+    if (!updates.length) continue;
+    scene.updateEmbeddedDocuments(type, updates, { "scene-prefabs-sync": true });
+  }
+}
+
+// preUpdate* хуки по типам документов
+Hooks.on("preUpdateToken", scenePrefabsPreUpdate);
+Hooks.on("preUpdateTile", scenePrefabsPreUpdate);
+Hooks.on("preUpdateDrawing", scenePrefabsPreUpdate);
+Hooks.on("preUpdateAmbientLight", scenePrefabsPreUpdate);
+Hooks.on("preUpdateAmbientSound", scenePrefabsPreUpdate);
+Hooks.on("preUpdateNote", scenePrefabsPreUpdate);
+Hooks.on("preUpdateMeasuredTemplate", scenePrefabsPreUpdate);
+Hooks.on("preUpdateWall", scenePrefabsPreUpdate);
+
 // Перехватываем дроп сцены на канву и спавним токены-префабы
 Hooks.on("dropCanvasData", async (canvas, data, event) => {
   // Интересуют только сцены
