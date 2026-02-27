@@ -33,6 +33,287 @@ Hooks.on("controlAmbientSound", scenePrefabsHandleControl);
 Hooks.on("controlNote", scenePrefabsHandleControl);
 Hooks.on("controlMeasuredTemplate", scenePrefabsHandleControl);
 
+// Добавляем отдельный инструмент в контролы тайлов (левое меню)
+Hooks.on("getSceneControlButtons", (controls) => {
+  const tilesControl = controls.tiles;
+  if (!tilesControl) return;
+
+  tilesControl.tools = tilesControl.tools || {};
+
+  tilesControl.tools["scene-prefabs-spawn"] = {
+    name: "scene-prefabs-spawn",
+    title: "Scene Prefabs: Spawn",
+    icon: "fas fa-object-group",
+    order: Object.keys(tilesControl.tools).length,
+    button: true,
+    visible: game.user.isGM,
+    onChange: async (active) => {
+      if (!active) {
+        ScenePrefabsPlacement.disable();
+        return;
+      }
+      await ScenePrefabsPlacement.activate();
+    }
+  };
+});
+
+// -----------------------
+// Режим ручного спавна префаба через тулз в Tiles
+// -----------------------
+
+const ScenePrefabsPlacement = {
+  active: false,
+  sourceSceneUuid: null,
+  sourceSceneName: null,
+  bbox: null, // { width, height }
+  tilePreviewData: null, // [{ img, width, height, rotation, alpha, dx, dy }]
+  _pointerMoveHandler: null,
+  _clickHandler: null,
+  _contextMenuHandler: null,
+
+  async activate() {
+    if (!canvas?.ready) return;
+
+    const sourceScene = await this._chooseSourceScene();
+    if (!sourceScene) {
+      ui.notifications.warn("Scene Prefabs: сцена для префаба не выбрана.");
+      this.disable();
+      return;
+    }
+
+    const { bbox, tiles } = this._computeTilePreviewData(sourceScene);
+
+    this.active = true;
+    this.sourceSceneUuid = sourceScene.uuid;
+    this.sourceSceneName = sourceScene.name;
+    this.bbox = bbox;
+    this.tilePreviewData = tiles;
+
+    this._attachHandlers();
+    ui.notifications.info(`Scene Prefabs: режим спавна префаба из сцены "${sourceScene.name}" — кликни по канве для размещения.`);
+  },
+
+  disable() {
+    this.active = false;
+    this.sourceSceneUuid = null;
+    this.sourceSceneName = null;
+    this.bbox = null;
+    this.tilePreviewData = null;
+    this._detachHandlers();
+    this._clearPreview();
+  },
+
+  async _chooseSourceScene() {
+    const scenes = game.scenes?.contents ?? [];
+    if (!scenes.length) return null;
+
+    return new Promise((resolve) => {
+      const options = scenes
+        .map((s) => `<option value="${s.uuid}">${foundry.utils.escapeHTML(s.name)}</option>`)
+        .join("");
+
+      const content = `
+        <form>
+          <div class="form-group">
+            <label>Сцена-префаб</label>
+            <select name="scene-prefab" style="width:100%;">
+              ${options}
+            </select>
+          </div>
+        </form>`;
+
+      const { DialogV2 } = foundry.applications.api;
+
+      new DialogV2({
+        window: { title: "Scene Prefabs — выбор сцены" },
+        content,
+        buttons: [
+          {
+            action: "ok",
+            label: "Выбрать",
+            default: true,
+            callback: (event, button, dialog) => {
+              const form = button.form;
+              const uuid = form?.elements?.["scene-prefab"]?.value;
+              const scene = scenes.find((s) => s.uuid === uuid);
+              resolve(scene ?? null);
+            }
+          },
+          {
+            action: "cancel",
+            label: "Отмена",
+            callback: () => resolve(null)
+          }
+        ],
+        close: () => resolve(null)
+      }).render({ force: true });
+    });
+  },
+
+  _computeTilePreviewData(sourceScene) {
+    const tiles = sourceScene.tiles?.contents ?? [];
+    if (!tiles.length) {
+      return {
+        bbox: { width: canvas.grid.size, height: canvas.grid.size },
+        tiles: []
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const t of tiles) {
+      const x0 = t.x;
+      const y0 = t.y;
+      const x1 = t.x + (t.width ?? 0);
+      const y1 = t.y + (t.height ?? 0);
+      minX = Math.min(minX, x0, x1);
+      minY = Math.min(minY, y0, y1);
+      maxX = Math.max(maxX, x0, x1);
+      maxY = Math.max(maxY, y0, y1);
+    }
+
+    const bbox = {
+      width: maxX - minX || canvas.grid.size,
+      height: maxY - minY || canvas.grid.size
+    };
+
+    const tilesData = tiles.map((t) => ({
+      img: t.texture?.src ?? t.document?.texture?.src ?? t.document?.img ?? t.img,
+      width: t.width ?? t.document?.width ?? canvas.grid.size,
+      height: t.height ?? t.document?.height ?? canvas.grid.size,
+      rotation: t.rotation ?? 0,
+      alpha: t.alpha ?? 1,
+      dx: (t.x + (t.width ?? 0) / 2) - (minX + bbox.width / 2),
+      dy: (t.y + (t.height ?? 0) / 2) - (minY + bbox.height / 2)
+    }));
+
+    return { bbox, tiles: tilesData };
+  },
+
+  _attachHandlers() {
+    const view = canvas.app.view;
+    if (!view) return;
+
+    this._pointerMoveHandler = this._pointerMoveHandler || this._onPointerMove.bind(this);
+    this._clickHandler = this._clickHandler || this._onClick.bind(this);
+    this._contextMenuHandler = this._contextMenuHandler || this._onContextMenu.bind(this);
+
+    view.addEventListener("pointermove", this._pointerMoveHandler);
+    view.addEventListener("click", this._clickHandler);
+    view.addEventListener("contextmenu", this._contextMenuHandler);
+  },
+
+  _detachHandlers() {
+    const view = canvas?.app?.view;
+    if (!view) return;
+    if (this._pointerMoveHandler) view.removeEventListener("pointermove", this._pointerMoveHandler);
+    if (this._clickHandler) view.removeEventListener("click", this._clickHandler);
+    if (this._contextMenuHandler) view.removeEventListener("contextmenu", this._contextMenuHandler);
+  },
+
+  _clearPreview() {
+    const tilesLayer = canvas.tiles;
+    if (!tilesLayer) return;
+    const container = tilesLayer.preview;
+    if (!container) return;
+    container.removeChildren();
+  },
+
+  _renderPreviewAt(worldX, worldY) {
+    const tilesLayer = canvas.tiles;
+    if (!tilesLayer) return;
+
+    let container = tilesLayer.preview;
+    if (!container) {
+      container = tilesLayer.preview = new PIXI.Container();
+      tilesLayer.addChild(container);
+    }
+
+    container.removeChildren();
+
+    const w = this.bbox?.width ?? canvas.grid.size;
+    const h = this.bbox?.height ?? canvas.grid.size;
+
+    const tiles = this.tilePreviewData ?? [];
+    // Если нет тайлов — fallback-прямоугольник
+    if (!tiles.length) {
+      const g = new PIXI.Graphics();
+      g.lineStyle(2, 0x00ff00, 0.9);
+      g.beginFill(0x00ff00, 0.2);
+      g.drawRect(worldX - w / 2, worldY - h / 2, w, h);
+      g.endFill();
+      container.addChild(g);
+      return;
+    }
+
+    for (const tile of tiles) {
+      if (!tile.img) continue;
+      const tex = PIXI.Texture.from(tile.img);
+      const sprite = new PIXI.Sprite(tex);
+      sprite.width = tile.width;
+      sprite.height = tile.height;
+      sprite.alpha = tile.alpha;
+      sprite.rotation = (tile.rotation * Math.PI) / 180;
+
+      const cx = worldX + tile.dx;
+      const cy = worldY + tile.dy;
+      sprite.x = cx - tile.width / 2;
+      sprite.y = cy - tile.height / 2;
+
+      container.addChild(sprite);
+    }
+  },
+
+  _onPointerMove(ev) {
+    if (!this.active) return;
+    if (!canvas?.ready) return;
+
+    const view = canvas.app.view;
+    const rect = view.getBoundingClientRect();
+    const localX = ev.clientX - rect.left;
+    const localY = ev.clientY - rect.top;
+
+    const worldPos = canvas.stage.toLocal(new PIXI.Point(localX, localY));
+    this._renderPreviewAt(worldPos.x, worldPos.y);
+  },
+
+  async _onClick(ev) {
+    if (!this.active) return;
+    if (!canvas?.ready) return;
+    if (!this.sourceSceneUuid) return;
+
+    // Только левая кнопка мыши размещает префаб
+    if (ev.button !== 0) return;
+
+    const view = canvas.app.view;
+    const rect = view.getBoundingClientRect();
+    const localX = ev.clientX - rect.left;
+    const localY = ev.clientY - rect.top;
+    const worldPos = canvas.stage.toLocal(new PIXI.Point(localX, localY));
+
+    const sourceScene = await fromUuid(this.sourceSceneUuid);
+    if (!sourceScene) {
+      ui.notifications.error("Scene Prefabs: не удалось загрузить сцену-префаб.");
+      this.disable();
+      return;
+    }
+
+    await scenePrefabsSpawnFromSceneAt(sourceScene, canvas.scene, worldPos.x, worldPos.y);
+  },
+
+  _onContextMenu(ev) {
+    if (!this.active) return;
+    // Правая кнопка — отменить режим размещения
+    ev.preventDefault();
+    ev.stopPropagation();
+    ui.notifications.info("Scene Prefabs: размещение префаба отменено.");
+    this.disable();
+  }
+};
+
 // Синхронное движение всего префаба по дельте одного объекта (межслойно)
 function scenePrefabsPreUpdate(doc, change, options, userId) {
   // Не зацикливаем собственные апдейты
@@ -117,22 +398,7 @@ Hooks.on("preUpdateNote", scenePrefabsPreUpdate);
 Hooks.on("preUpdateMeasuredTemplate", scenePrefabsPreUpdate);
 Hooks.on("preUpdateWall", scenePrefabsPreUpdate);
 
-// Перехватываем дроп сцены на канву и спавним токены-префабы
-Hooks.on("dropCanvasData", async (canvas, data, event) => {
-  // Интересуют только сцены
-  if (data?.type !== "Scene") return;
-  if (!canvas?.scene) return;
-
-  const targetScene = canvas.scene;
-
-  // Получаем документ исходной сцены по UUID
-  const sourceScene = await fromUuid(data.uuid);
-  if (!sourceScene) return;
-
-  // Координата дропа — точка, относительно которой центрируем префаб
-  const dropX = data.x ?? 0;
-  const dropY = data.y ?? 0;
-
+async function scenePrefabsSpawnFromSceneAt(sourceScene, targetScene, dropX, dropY) {
   // Собираем все поддерживаемые embedded-документы исходной сцены
   const collections = {
     Token: sourceScene.tokens,
@@ -149,6 +415,10 @@ Hooks.on("dropCanvasData", async (canvas, data, event) => {
   const allDocs = [];
   const xs = [];
   const ys = [];
+  let tileMinX = Infinity;
+  let tileMinY = Infinity;
+  let tileMaxX = -Infinity;
+  let tileMaxY = -Infinity;
 
   for (const [type, coll] of Object.entries(collections)) {
     const docs = coll?.contents ?? [];
@@ -167,19 +437,39 @@ Hooks.on("dropCanvasData", async (canvas, data, event) => {
         const cy = typeof h === "number" ? doc.y + h / 2 : doc.y;
         xs.push(cx);
         ys.push(cy);
+
+        if (type === "Tile") {
+          const tx0 = doc.x;
+          const ty0 = doc.y;
+          const tx1 = doc.x + (w ?? 0);
+          const ty1 = doc.y + (h ?? 0);
+          tileMinX = Math.min(tileMinX, tx0, tx1);
+          tileMinY = Math.min(tileMinY, ty0, ty1);
+          tileMaxX = Math.max(tileMaxX, tx0, tx1);
+          tileMaxY = Math.max(tileMaxY, ty0, ty1);
+        }
       }
     }
   }
 
   if (!allDocs.length) return;
 
-  // Находим общий центр всех placeables в исходной сцене
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
+  // Находим якорный центр:
+  // - если есть тайлы, центрируем по их bbox (как превью)
+  // - иначе по bbox всех placeables
+  let anchorX;
+  let anchorY;
+  if (tileMinX !== Infinity && tileMaxX !== -Infinity) {
+    anchorX = (tileMinX + tileMaxX) / 2;
+    anchorY = (tileMinY + tileMaxY) / 2;
+  } else {
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    anchorX = (minX + maxX) / 2;
+    anchorY = (minY + maxY) / 2;
+  }
 
   // Уникальный идентификатор инстанса префаба
   const prefabInstanceId = foundry.utils.randomID();
@@ -195,19 +485,19 @@ Hooks.on("dropCanvasData", async (canvas, data, event) => {
     // Смещаем так, чтобы центр общей bbox пришёлся в точку дропа
     if (type === "Wall") {
       const [x0, y0, x1, y1] = obj.c;
-      const dx = dropX - centerX;
-      const dy = dropY - centerY;
+      const dx = dropX - anchorX;
+      const dy = dropY - anchorY;
       obj.c = [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
     } else if (typeof obj.x === "number" && typeof obj.y === "number") {
       const w = obj.width;
       const h = obj.height;
       const ox = typeof w === "number" ? obj.x + w / 2 : obj.x;
       const oy = typeof h === "number" ? obj.y + h / 2 : obj.y;
-      const dx = dropX - centerX;
-      const dy = dropY - centerY;
+      const dx = dropX - anchorX;
+      const dy = dropY - anchorY;
       // сохраняем относительное смещение центра объекта
-      const relX = ox - centerX;
-      const relY = oy - centerY;
+      const relX = ox - anchorX;
+      const relY = oy - anchorY;
       const newCenterX = dropX + relX;
       const newCenterY = dropY + relY;
       if (typeof w === "number") {
@@ -256,5 +546,20 @@ Hooks.on("dropCanvasData", async (canvas, data, event) => {
       Object.entries(toCreateByType).map(([type, docs]) => [type, docs.length])
     )
   });
+}
+
+// Перехватываем дроп сцены на канву и спавним префаб
+Hooks.on("dropCanvasData", async (canvas, data, event) => {
+  if (data?.type !== "Scene") return;
+  if (!canvas?.scene) return;
+
+  const targetScene = canvas.scene;
+  const sourceScene = await fromUuid(data.uuid);
+  if (!sourceScene) return;
+
+  const dropX = data.x ?? 0;
+  const dropY = data.y ?? 0;
+
+  await scenePrefabsSpawnFromSceneAt(sourceScene, targetScene, dropX, dropY);
 });
 
