@@ -1,0 +1,14 @@
+{
+  "SCENEPREFABS.Tool.Spawn": "Scene Prefabs: Spawn",
+
+  "SCENEPREFABS.Dialog.SelectScene.Title": "Scene Prefabs — choose source scene",
+  "SCENEPREFABS.Dialog.SelectScene.Label": "Prefab scene",
+  "SCENEPREFABS.Dialog.SelectScene.Choose": "Choose",
+  "SCENEPREFABS.Dialog.Common.Cancel": "Cancel",
+
+  "SCENEPREFABS.SpawnMode.SceneNotSelected": "Scene Prefabs: no prefab scene selected.",
+  "SCENEPREFABS.SpawnMode.Start": "Scene Prefabs: spawn mode from scene \"{name}\" — click on the canvas to place.",
+  "SCENEPREFABS.SpawnMode.Cancelled": "Scene Prefabs: prefab placement cancelled.",
+  "SCENEPREFABS.SpawnMode.SourceLoadError": "Scene Prefabs: failed to load prefab scene."
+}
+

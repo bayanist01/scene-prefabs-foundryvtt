@@ -1,0 +1,14 @@
+{
+  "SCENEPREFABS.Tool.Spawn": "Префабы сцен: размещение",
+
+  "SCENEPREFABS.Dialog.SelectScene.Title": "Префабы сцен — выбор исходной сцены",
+  "SCENEPREFABS.Dialog.SelectScene.Label": "Сцена-префаб",
+  "SCENEPREFABS.Dialog.SelectScene.Choose": "Выбрать",
+  "SCENEPREFABS.Dialog.Common.Cancel": "Отмена",
+
+  "SCENEPREFABS.SpawnMode.SceneNotSelected": "Префабы сцен: сцена для префаба не выбрана.",
+  "SCENEPREFABS.SpawnMode.Start": "Префабы сцен: режим размещения префаба из сцены «{name}» — кликни по канве для размещения.",
+  "SCENEPREFABS.SpawnMode.Cancelled": "Префабы сцен: размещение префаба отменено.",
+  "SCENEPREFABS.SpawnMode.SourceLoadError": "Префабы сцен: не удалось загрузить сцену-префаб."
+}
+
