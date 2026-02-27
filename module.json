@@ -2,7 +2,7 @@
   "id": "scene-prefabs",
   "title": "Scene Prefabs",
   "description": "Local module scaffold for Foundry VTT v13.351.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "url": "https://github.com/bayanist01/scene-prefabs-foundryvtt",
   "manifest": "https://raw.githubusercontent.com/bayanist01/scene-prefabs-foundryvtt/main/module.json",
   "download": "https://github.com/bayanist01/scene-prefabs-foundryvtt/releases/latest/download/scene-prefabs.zip",
