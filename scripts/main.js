@@ -42,7 +42,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
 
   tilesControl.tools["scene-prefabs-spawn"] = {
     name: "scene-prefabs-spawn",
-    title: "Scene Prefabs: Spawn",
+    title: game.i18n.localize("SCENEPREFABS.Tool.Spawn"),
     icon: "fas fa-object-group",
     order: Object.keys(tilesControl.tools).length,
     button: true,
@@ -76,7 +76,7 @@ const ScenePrefabsPlacement = {
 
     const sourceScene = await this._chooseSourceScene();
     if (!sourceScene) {
-      ui.notifications.warn("Scene Prefabs: сцена для префаба не выбрана.");
+      ui.notifications.warn(game.i18n.localize("SCENEPREFABS.SpawnMode.SceneNotSelected"));
       this.disable();
       return;
     }
@@ -90,7 +90,9 @@ const ScenePrefabsPlacement = {
     this.tilePreviewData = tiles;
 
     this._attachHandlers();
-    ui.notifications.info(`Scene Prefabs: режим спавна префаба из сцены "${sourceScene.name}" — кликни по канве для размещения.`);
+    ui.notifications.info(
+      game.i18n.format("SCENEPREFABS.SpawnMode.Start", { name: sourceScene.name })
+    );
   },
 
   disable() {
@@ -116,10 +118,11 @@ const ScenePrefabsPlacement = {
         .map((s) => `<option value="${s.uuid}">${foundry.utils.escapeHTML(s.name)}</option>`)
         .join("");
 
+      const label = game.i18n.localize("SCENEPREFABS.Dialog.SelectScene.Label");
       const content = `
         <form>
           <div class="form-group">
-            <label>Сцена-префаб</label>
+            <label>${label}</label>
             <select name="scene-prefab" style="width:100%;">
               ${options}
             </select>
@@ -129,12 +132,12 @@ const ScenePrefabsPlacement = {
       const { DialogV2 } = foundry.applications.api;
 
       new DialogV2({
-        window: { title: "Scene Prefabs — выбор сцены" },
+        window: { title: game.i18n.localize("SCENEPREFABS.Dialog.SelectScene.Title") },
         content,
         buttons: [
           {
             action: "ok",
-            label: "Выбрать",
+            label: game.i18n.localize("SCENEPREFABS.Dialog.SelectScene.Choose"),
             default: true,
             callback: (event, button, dialog) => {
               const form = button.form;
@@ -145,7 +148,7 @@ const ScenePrefabsPlacement = {
           },
           {
             action: "cancel",
-            label: "Отмена",
+            label: game.i18n.localize("SCENEPREFABS.Dialog.Common.Cancel"),
             callback: () => resolve(null)
           }
         ],
@@ -302,7 +305,9 @@ const ScenePrefabsPlacement = {
 
     const sourceScene = await fromUuid(this.sourceSceneUuid);
     if (!sourceScene) {
-      ui.notifications.error("Scene Prefabs: не удалось загрузить сцену-префаб.");
+      ui.notifications.error(
+        game.i18n.localize("SCENEPREFABS.SpawnMode.SourceLoadError")
+      );
       this.disable();
       return;
     }
@@ -315,7 +320,9 @@ const ScenePrefabsPlacement = {
     // Правая кнопка — отменить режим размещения
     ev.preventDefault();
     ev.stopPropagation();
-    ui.notifications.info("Scene Prefabs: размещение префаба отменено.");
+    ui.notifications.info(
+      game.i18n.localize("SCENEPREFABS.SpawnMode.Cancelled")
+    );
     this.disable();
   }
 };
