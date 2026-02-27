@@ -2,7 +2,7 @@
   "id": "scene-prefabs",
   "title": "Scene Prefabs",
   "description": "Local module scaffold for Foundry VTT v13.351.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "authors": [
     {
       "name": "Dxkonny"
