@@ -24,6 +24,12 @@ Module for Foundry VTT **v13.351+** that lets you treat any scene as a prefab:
     - a shared `prefabInstanceId` (the prefab instance id),
     - `sourceSceneId` and `sourceSceneUuid`.
 
+- **Sample prefab scenes**
+  - The module ships with a compendium containing two example prefab scenes:
+    - a **tree** scene;
+    - a **campfire** scene.
+  - You can load these into your world and immediately try prefab placement without preparing your own scenes first.
+
 - **Tile tool for manual placement**
   - In the left toolbar, under **Tiles**, you get a `Scene Prefabs: Spawn` tool.
   - When activated:
