@@ -104,7 +104,11 @@ const ScenePrefabsPlacement = {
   },
 
   async _chooseSourceScene() {
-    const scenes = game.scenes?.contents ?? [];
+    const scenes = (game.scenes?.contents ?? []).slice().sort((a, b) => {
+      return String(a.name).localeCompare(String(b.name), game.i18n.lang || undefined, {
+        sensitivity: "base"
+      });
+    });
     if (!scenes.length) return null;
 
     return new Promise((resolve) => {
@@ -256,12 +260,14 @@ const ScenePrefabsPlacement = {
       sprite.width = tile.width;
       sprite.height = tile.height;
       sprite.alpha = tile.alpha;
+      // Вращаем вокруг центра, как обычный Tile
+      sprite.anchor.set(0.5, 0.5);
       sprite.rotation = (tile.rotation * Math.PI) / 180;
 
       const cx = worldX + tile.dx;
       const cy = worldY + tile.dy;
-      sprite.x = cx - tile.width / 2;
-      sprite.y = cy - tile.height / 2;
+      sprite.x = cx;
+      sprite.y = cy;
 
       container.addChild(sprite);
     }
