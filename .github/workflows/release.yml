@@ -1,0 +1,58 @@
+name: Release FoundryVTT module
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read module metadata
+        id: meta
+        run: |
+          ID=$(jq -r '.id' module.json)
+          VERSION=$(jq -r '.version' module.json)
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+
+          echo "Module id: $ID"
+          echo "Module version: $VERSION"
+          echo "Tag version: $TAG_VERSION"
+
+          if [ "$VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match module.json version ($VERSION)"
+            exit 1
+          fi
+
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build module zip
+        run: |
+          ID=${{ steps.meta.outputs.id }}
+
+          mkdir -p dist
+          rsync -av \
+            --exclude=".git" \
+            --exclude=".github" \
+            --exclude="dist" \
+            ./ "dist/$ID/"
+
+          cd dist
+          zip -r "../${ID}.zip" "$ID"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: |
+            ${{ steps.meta.outputs.id }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
