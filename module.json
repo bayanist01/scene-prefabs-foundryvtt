@@ -31,7 +31,15 @@
       "path": "lang/ru.json"
     }
   ],
-  "packs": [],
+  "packs": [
+      {
+          "name": "example-prefabs",
+          "label": "Scene Prefabs: Examples",
+          "type": "Scene",
+          "path": "packs/example-prefabs",
+          "private": false
+      }
+  ],
   "media": [],
   "socket": false
 }
